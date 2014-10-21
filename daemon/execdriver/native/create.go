@@ -91,6 +91,19 @@ func (d *driver) createNetwork(container *libcontainer.Config, c *execdriver.Com
 		},
 	}
 
+	if c.Network.OvsNetworking {
+		vethNetwork := libcontainer.Network{
+			Mtu:        c.Network.Mtu,
+			Address:    fmt.Sprintf("%s/%d", c.Network.Interface.IPAddress, c.Network.Interface.IPPrefixLen),
+			MacAddress: c.Network.Interface.MacAddress,
+			Gateway:    c.Network.Interface.Gateway,
+			Type:       "ovs",
+			Bridge:     c.Network.Interface.Bridge,
+			VethPrefix: "docker",
+		}
+		container.Networks = append(container.Networks, &vethNetwork)
+	}
+
 	if c.Network.Interface != nil {
 		vethNetwork := libcontainer.Network{
 			Mtu:        c.Network.Mtu,

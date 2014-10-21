@@ -85,6 +85,7 @@ func InitDriver(job *engine.Job) engine.Status {
 		ipForward      = job.GetenvBool("EnableIpForward")
 		bridgeIP       = job.Getenv("BridgeIP")
 		fixedCIDR      = job.Getenv("FixedCIDR")
+		ovsEnabled	   = job.GetenvBool("EnableOvsSupport")
 	)
 
 	if defaultIP := job.Getenv("DefaultBindingIP"); defaultIP != "" {

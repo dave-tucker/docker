@@ -58,7 +58,7 @@ func Parse(cmd *flag.FlagSet, args []string, sysInfo *sysinfo.SysInfo) (*Config,
 		flWorkingDir      = cmd.String([]string{"w", "-workdir"}, "", "Working directory inside the container")
 		flCpuShares       = cmd.Int64([]string{"c", "-cpu-shares"}, 0, "CPU shares (relative weight)")
 		flCpuset          = cmd.String([]string{"-cpuset"}, "", "CPUs in which to allow execution (0-3, 0,1)")
-		flNetMode         = cmd.String([]string{"-net"}, "bridge", "Set the Network mode for the container\n'bridge': creates a new network stack for the container on the docker bridge\n'none': no networking for this container\n'container:<name|id>': reuses another container network stack\n'host': use the host network stack inside the container.  Note: the host mode gives the container full access to local system services such as D-bus and is therefore considered insecure.")
+		flNetMode         = cmd.String([]string{"-net"}, "bridge", "Set the Network mode for the container\n'bridge': creates a new network stack for the container on the docker bridge\n'ovs:' creates a new network stack for the container on the Open vSwitch docker bridge\n'none': no networking for this container\n'container:<name|id>': reuses another container network stack\n'host': use the host network stack inside the container.  Note: the host mode gives the container full access to local system services such as D-bus and is therefore considered insecure.)"
 		flRestartPolicy   = cmd.String([]string{"-restart"}, "", "Restart policy to apply when a container exits (no, on-failure[:max-retry], always)")
 	)
 
@@ -103,6 +103,10 @@ func Parse(cmd *flag.FlagSet, args []string, sysInfo *sysinfo.SysInfo) (*Config,
 	)
 
 	if *flNetMode != "bridge" && *flNetMode != "none" && *flHostname != "" {
+		return nil, nil, cmd, ErrConflictNetworkHostname
+	}
+
+	if *flNetMode != "ovs" && *flNetMode != "none" && *flHostname != "" {
 		return nil, nil, cmd, ErrConflictNetworkHostname
 	}
 
@@ -364,7 +368,7 @@ func parseKeyValueOpts(opts opts.ListOpts) ([]utils.KeyValuePair, error) {
 func parseNetMode(netMode string) (NetworkMode, error) {
 	parts := strings.Split(netMode, ":")
 	switch mode := parts[0]; mode {
-	case "bridge", "none", "host":
+	case "bridge", "ovs", "none", "host":
 	case "container":
 		if len(parts) < 2 || parts[1] == "" {
 			return "", fmt.Errorf("invalid container format container:<name|id>")

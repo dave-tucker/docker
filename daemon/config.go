@@ -37,6 +37,7 @@ type Config struct {
 	ExecDriver                  string
 	Mtu                         int
 	DisableNetwork              bool
+	EnableOvsSupport			bool
 	EnableSelinuxSupport        bool
 	Context                     map[string][]string
 }
@@ -58,6 +59,7 @@ func (config *Config) InstallFlags() {
 	flag.BoolVar(&config.InterContainerCommunication, []string{"#icc", "-icc"}, true, "Enable inter-container communication")
 	flag.StringVar(&config.GraphDriver, []string{"s", "-storage-driver"}, "", "Force the Docker runtime to use a specific storage driver")
 	flag.StringVar(&config.ExecDriver, []string{"e", "-exec-driver"}, "native", "Force the Docker runtime to use a specific exec driver")
+	flag.BoolVar(&config.EnableOvsSupport, []string{"-ovs-enabled"}, false, "Enable Open vSwitch support. Requires Open vSwitch to be installed on the host.")
 	flag.BoolVar(&config.EnableSelinuxSupport, []string{"-selinux-enabled"}, false, "Enable selinux support. SELinux does not presently support the BTRFS storage driver")
 	flag.IntVar(&config.Mtu, []string{"#mtu", "-mtu"}, 0, "Set the containers network MTU\nif no value is provided: default to the default route MTU or 1500 if no default route is available")
 	opts.IPVar(&config.DefaultIp, []string{"#ip", "-ip"}, "0.0.0.0", "Default IP address to use when binding container ports")

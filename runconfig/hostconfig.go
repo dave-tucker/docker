@@ -19,6 +19,10 @@ func (n NetworkMode) IsHost() bool {
 	return n == "host"
 }
 
+func (n NetworkMode) IsOvs() bool {
+	return n == "ovs"
+}
+
 func (n NetworkMode) IsContainer() bool {
 	parts := strings.SplitN(string(n), ":", 2)
 	return len(parts) > 1 && parts[0] == "container"
