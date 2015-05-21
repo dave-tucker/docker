@@ -217,7 +217,7 @@ of the containers.
 ## Network settings
 
     --dns=[]         : Set custom dns servers for the container
-    --net="bridge"   : Set the Network mode for the container
+    --net="bridge"   : Set name or id of a network to use. The following names have special meaning.
                         'bridge': creates a new network stack for the container on the docker bridge
                         'none': no networking for this container
                         'container:<name|id>': reuses another container network stack
@@ -238,7 +238,9 @@ By default, the MAC address is generated using the IP address allocated to the
 container. You can set the container's MAC address explicitly by providing a
 MAC address via the `--mac-address` parameter (format:`12:34:56:78:9a:bc`).
 
-Supported networking modes are:
+An operator can specify the the name or ID of a network to attach to a container 
+with `--net`. 
+The following names have been reserved for special cases:
 
 <table>
   <thead>

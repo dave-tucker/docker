@@ -988,7 +988,7 @@ Creates a new container.
       -m, --memory=""            Memory limit
       --mac-address=""           Container MAC address (e.g. 92:d0:c6:0a:29:33)
       --name=""                  Assign a name to the container
-      --net="bridge"             Set the Network for the container
+      --net="bridge"             Set the Network mode for the container
       --oom-kill-disable=false   Whether to disable OOM Killer for the container or not
       -P, --publish-all=false    Publish all exposed ports to random ports
       -p, --publish=[]           Publish a container's port(s) to the host
@@ -1659,6 +1659,59 @@ nano-second part of the timestamp will be padded with zero when necessary.
 The `--since` option shows logs of a container generated only after
 the given date, specified as RFC 3339 or UNIX timestamp. The `--since` option
 can be combined with the `--follow` and `--tail` options.
+
+## network
+
+    Usage: docker network [OPTIONS] COMMAND [OPTIONS] [arg...]
+
+    Commands:
+        create    Create a network
+        rm        Remove a network
+        ls        List all networks
+        info      Display information of a network
+
+    Run 'docker network COMMAND --help' for more information on a command.
+
+        --help=false       Print usage
+
+The `docker network` command is used to manage Networks.
+
+To create a network, `docker network create foo`. You can also specify a driver
+if you have loaded a networking plugin e.g `docker network create -d bar foo`
+
+    $ docker network create foo
+    aae601f43744bc1f57c515a16c8c7c4989a2cad577978a32e6910b799a6bccf6
+    $ docker network create -d some_cool_plugin bar
+    d9989793e2f5fe400a58ef77f706d03f668219688ee989ea68ea78b990fa2406
+
+`docker network ls` is used to display the currently configured networks
+
+    $ docker network ls
+    NETWORK ID          NAME                TYPE
+    d367e613ff7f        none                null
+    bd61375b6993        host                host
+    cc455abccfeb        bridge              bridge
+    aae601f43744        foo                 null
+    d9989793e2f5        bar                 null
+
+To get detailed information on a network, you can use the `docker network info`
+command.
+
+    $ docker network info foo
+    Network Id: aae601f43744bc1f57c515a16c8c7c4989a2cad577978a32e6910b799a6bccf6
+    Name: foo
+    Type: null
+
+If you no longer have need of a network, you can delete it with `docker network rm`
+
+    $ docker network rm bar
+    bar
+    $ docker network ls
+    NETWORK ID          NAME                TYPE
+    aae601f43744        foo                 null
+    d367e613ff7f        none                null
+    bd61375b6993        host                host
+    cc455abccfeb        bridge              bridge
 
 ## pause
 

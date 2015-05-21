@@ -118,7 +118,7 @@ Finally, several networking options can only be provided when calling
     [Configuring DNS](#dns) and
     [Communication between containers](#between-containers)
 
- *  `--net=bridge|none|container:NAME_or_ID|host|NETWORK-NAME` — see
+ *  `--net=bridge|none|container:NAME_or_ID|host|NETWORK_NAME_or_ID` — see
     [How Docker networks a container](#container-networking)
 
  *  `--mac-address=MACADDRESS...` — see
@@ -939,11 +939,10 @@ values.
     leaving you free to build any of the custom configurations explored
     in the last few sections of this document.
 
- *  `--net=NETWORK-NAME` — Tells Docker to put the container inside of the
-    network stack named NETWORK-NAME. NETWORK-NAME is user-specified and the
-    network stack is created and managed by a network-driver.The network-driver
-    can either be an in-built driver or an external plugin. This network stack
-    is created and managed using "docker network" commands.
+ *  `--net=NETWORK_NAME_or_ID` — Tells Docker to put the container inside of the
+    a user-specified network stack that is created and managed by a driver. The driver
+    can either be one of the built-in drivers or an external plugin. This network stack
+    is created and managed using `docker network` commands.
 
 
 To get an idea of the steps that are necessary if you use `--net=none`

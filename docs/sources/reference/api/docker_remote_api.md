@@ -54,6 +54,17 @@ Running `docker rmi` emits an **untag** event when removing an image name.  The 
 
 > **Acknowledgement**: This diagram and the accompanying text were used with the permission of Matt Good and Gilder Labs. See Matt's original blog post [Docker Events Explained](http://gliderlabs.com/blog/2015/04/14/docker-events-explained/).
 
+## v1.20
+
+### Full documentation
+
+[*Docker Remote API v1.20*](/reference/api/docker_remote_api_v1.20/)
+
+### What's new
+
+**New!**
+Networking features can now be manipulated wuth the Remote API
+
 ## v1.19
 
 ### Full documentation
