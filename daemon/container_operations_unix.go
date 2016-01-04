@@ -488,7 +488,10 @@ func (daemon *Daemon) updateNetworkSettings(container *container.Container, n li
 			return runconfig.ErrConflictNoNetwork
 		}
 	}
-	container.NetworkSettings.Networks[n.Name()] = new(networktypes.EndpointSettings)
+
+	if _, ok := container.NetworkSettings.Networks[n.Name()]; !ok {
+		container.NetworkSettings.Networks[n.Name()] = new(networktypes.EndpointSettings)
+	}
 
 	return nil
 }
@@ -547,7 +550,12 @@ func (daemon *Daemon) updateNetwork(container *container.Container) error {
 }
 
 // updateContainerNetworkSettings update the network settings
-func (daemon *Daemon) updateContainerNetworkSettings(container *container.Container) error {
+func (daemon *Daemon) updateContainerNetworkSettings(container *container.Container, endpointsConfig map[string]*networktypes.EndpointSettings) error {
+	var (
+		n   libnetwork.Network
+		err error
+	)
+
 	mode := container.HostConfig.NetworkMode
 	if container.Config.NetworkDisabled || mode.IsContainer() {
 		return nil
@@ -558,14 +566,35 @@ func (daemon *Daemon) updateContainerNetworkSettings(container *container.Contai
 		networkName = daemon.netController.Config().Daemon.DefaultNetwork
 	}
 	if mode.IsUserDefined() {
-		n, err := daemon.FindNetwork(networkName)
+		n, err = daemon.FindNetwork(networkName)
 		if err != nil {
 			return err
 		}
 		networkName = n.Name()
 	}
-	container.NetworkSettings.Networks = make(map[string]*networktypes.EndpointSettings)
-	container.NetworkSettings.Networks[networkName] = new(networktypes.EndpointSettings)
+	if container.NetworkSettings == nil {
+		container.NetworkSettings = &network.Settings{}
+	}
+	if endpointsConfig != nil {
+		container.NetworkSettings.Networks = endpointsConfig
+	}
+	if container.NetworkSettings.Networks == nil {
+		container.NetworkSettings.Networks = make(map[string]*networktypes.EndpointSettings)
+		container.NetworkSettings.Networks[networkName] = new(networktypes.EndpointSettings)
+	}
+	if !mode.IsUserDefined() {
+		return nil
+	}
+	// Make sure to internally store the per network endpoint config by network name
+	if _, ok := container.NetworkSettings.Networks[networkName]; ok {
+		return nil
+	}
+	if nwConfig, ok := container.NetworkSettings.Networks[n.ID()]; ok {
+		container.NetworkSettings.Networks[networkName] = nwConfig
+		delete(container.NetworkSettings.Networks, n.ID())
+		return nil
+	}
+
 	return nil
 }
 
@@ -583,15 +612,15 @@ func (daemon *Daemon) allocateNetwork(container *container.Container) error {
 			return nil
 		}
 
-		err := daemon.updateContainerNetworkSettings(container)
+		err := daemon.updateContainerNetworkSettings(container, nil)
 		if err != nil {
 			return err
 		}
 		updateSettings = true
 	}
 
-	for n := range container.NetworkSettings.Networks {
-		if err := daemon.connectToNetwork(container, n, updateSettings); err != nil {
+	for n, nConf := range container.NetworkSettings.Networks {
+		if err := daemon.connectToNetwork(container, n, nConf, updateSettings); err != nil {
 			return err
 		}
 	}
@@ -611,12 +640,48 @@ func (daemon *Daemon) getNetworkSandbox(container *container.Container) libnetwo
 	return sb
 }
 
+// User specified ip address is acceptable only for networks with user specified subnets.
+func validateNetworkingConfig(n libnetwork.Network, epConfig *networktypes.EndpointSettings) error {
+	if !networktypes.HasUserDefinedIPAddress(epConfig) {
+		return nil
+	}
+	_, nwIPv4Configs, nwIPv6Configs := n.Info().IpamConfig()
+	for _, s := range []struct {
+		ipConfigured  bool
+		subnetConfigs []*libnetwork.IpamConf
+	}{
+		{
+			ipConfigured:  len(epConfig.IPAMConfig.IPv4Address) > 0,
+			subnetConfigs: nwIPv4Configs,
+		},
+		{
+			ipConfigured:  len(epConfig.IPAMConfig.IPv6Address) > 0,
+			subnetConfigs: nwIPv6Configs,
+		},
+	} {
+		if s.ipConfigured {
+			foundSubnet := false
+			for _, cfg := range s.subnetConfigs {
+				if len(cfg.PreferredPool) > 0 {
+					foundSubnet = true
+					break
+				}
+			}
+			if !foundSubnet {
+				return runconfig.ErrUnsupportedNetworkNoSubnetAndIP
+			}
+		}
+	}
+
+	return nil
+}
+
 // ConnectToNetwork connects a container to a network
-func (daemon *Daemon) ConnectToNetwork(container *container.Container, idOrName string) error {
+func (daemon *Daemon) ConnectToNetwork(container *container.Container, idOrName string, endpointConfig *networktypes.EndpointSettings) error {
 	if !container.Running {
 		return derr.ErrorCodeNotRunning.WithArgs(container.ID)
 	}
-	if err := daemon.connectToNetwork(container, idOrName, true); err != nil {
+	if err := daemon.connectToNetwork(container, idOrName, endpointConfig, true); err != nil {
 		return err
 	}
 	if err := container.ToDiskLocking(); err != nil {
@@ -625,9 +690,13 @@ func (daemon *Daemon) ConnectToNetwork(container *container.Container, idOrName 
 	return nil
 }
 
-func (daemon *Daemon) connectToNetwork(container *container.Container, idOrName string, updateSettings bool) (err error) {
+func (daemon *Daemon) connectToNetwork(container *container.Container, idOrName string, endpointConfig *networktypes.EndpointSettings, updateSettings bool) (err error) {
 	if container.HostConfig.NetworkMode.IsContainer() {
 		return runconfig.ErrConflictSharedNetwork
+	}
+
+	if !container.HostConfig.NetworkMode.IsUserDefined() && networktypes.HasUserDefinedIPAddress(endpointConfig) {
+		return runconfig.ErrUnsupportedNetworkAndIP
 	}
 
 	if containertypes.NetworkMode(idOrName).IsBridge() &&
@@ -643,10 +712,18 @@ func (daemon *Daemon) connectToNetwork(container *container.Container, idOrName 
 		return err
 	}
 
+	if err := validateNetworkingConfig(n, endpointConfig); err != nil {
+		return err
+	}
+
 	if updateSettings {
 		if err := daemon.updateNetworkSettings(container, n); err != nil {
 			return err
 		}
+	}
+
+	if endpointConfig != nil {
+		container.NetworkSettings.Networks[n.Name()] = endpointConfig
 	}
 
 	ep, err := container.GetEndpointInNetwork(n)
@@ -854,18 +931,16 @@ func (daemon *Daemon) releaseNetwork(container *container.Container) {
 
 	sid := container.NetworkSettings.SandboxID
 	settings := container.NetworkSettings.Networks
+	if sid == "" || len(settings) == 0 {
+		return
+	}
+
 	var networks []libnetwork.Network
-	for n := range settings {
+	for n, epSettings := range settings {
 		if nw, err := daemon.FindNetwork(n); err == nil {
 			networks = append(networks, nw)
 		}
-		settings[n] = &networktypes.EndpointSettings{}
-	}
-
-	container.NetworkSettings = &network.Settings{Networks: settings}
-
-	if sid == "" || len(settings) == 0 {
-		return
+		epSettings.CleanOperationalData()
 	}
 
 	sb, err := daemon.netController.SandboxByID(sid)

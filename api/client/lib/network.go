@@ -7,6 +7,7 @@ import (
 
 	"github.com/docker/docker/api/types"
 	"github.com/docker/docker/api/types/filters"
+	networktypes "github.com/docker/docker/api/types/network"
 )
 
 // NetworkCreate creates a new network in the docker host.
@@ -30,8 +31,8 @@ func (cli *Client) NetworkRemove(networkID string) error {
 }
 
 // NetworkConnect connects a container to an existent network in the docker host.
-func (cli *Client) NetworkConnect(networkID, containerID string) error {
-	nc := types.NetworkConnect{Container: containerID}
+func (cli *Client) NetworkConnect(networkID, containerID string, networkingConfig *networktypes.NetworkingConfig) error {
+	nc := types.NetworkConnect{Container: containerID, EndpointConfig: networkingConfig.EndpointsConfig[networkID]}
 	resp, err := cli.post("/networks/"+networkID+"/connect", nil, nc, nil)
 	ensureReaderClosed(resp)
 	return err

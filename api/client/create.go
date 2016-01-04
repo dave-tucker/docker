@@ -8,6 +8,7 @@ import (
 	"github.com/docker/docker/api/client/lib"
 	"github.com/docker/docker/api/types"
 	"github.com/docker/docker/api/types/container"
+	networktypes "github.com/docker/docker/api/types/network"
 	Cli "github.com/docker/docker/cli"
 	"github.com/docker/docker/pkg/jsonmessage"
 	"github.com/docker/docker/reference"
@@ -79,7 +80,7 @@ func newCIDFile(path string) (*cidFile, error) {
 	return &cidFile{path: path, file: f}, nil
 }
 
-func (cli *DockerCli) createContainer(config *container.Config, hostConfig *container.HostConfig, cidfile, name string) (*types.ContainerCreateResponse, error) {
+func (cli *DockerCli) createContainer(config *container.Config, hostConfig *container.HostConfig, networkingConfig *networktypes.NetworkingConfig, cidfile, name string) (*types.ContainerCreateResponse, error) {
 	var containerIDFile *cidFile
 	if cidfile != "" {
 		var err error
@@ -107,7 +108,7 @@ func (cli *DockerCli) createContainer(config *container.Config, hostConfig *cont
 	}
 
 	//create the container
-	response, err := cli.client.ContainerCreate(config, hostConfig, name)
+	response, err := cli.client.ContainerCreate(config, hostConfig, networkingConfig, name)
 	//if image not found try to pull it
 	if err != nil {
 		if lib.IsErrImageNotFound(err) {
@@ -124,7 +125,7 @@ func (cli *DockerCli) createContainer(config *container.Config, hostConfig *cont
 			}
 			// Retry
 			var retryErr error
-			response, retryErr = cli.client.ContainerCreate(config, hostConfig, name)
+			response, retryErr = cli.client.ContainerCreate(config, hostConfig, networkingConfig, name)
 			if retryErr != nil {
 				return nil, retryErr
 			}
@@ -156,7 +157,8 @@ func (cli *DockerCli) CmdCreate(args ...string) error {
 		flName = cmd.String([]string{"-name"}, "", "Assign a name to the container")
 	)
 
-	config, hostConfig, cmd, err := runconfigopts.Parse(cmd, args)
+	config, hostConfig, networkingConfig, cmd, err := runconfigopts.Parse(cmd, args)
+
 	if err != nil {
 		cmd.ReportError(err.Error(), true)
 		os.Exit(1)
@@ -165,7 +167,7 @@ func (cli *DockerCli) CmdCreate(args ...string) error {
 		cmd.Usage()
 		return nil
 	}
-	response, err := cli.createContainer(config, hostConfig, hostConfig.ContainerIDFile, *flName)
+	response, err := cli.createContainer(config, hostConfig, networkingConfig, hostConfig.ContainerIDFile, *flName)
 	if err != nil {
 		return err
 	}

@@ -11,6 +11,7 @@ import (
 	"github.com/docker/docker/api/types"
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/api/types/filters"
+	networktypes "github.com/docker/docker/api/types/network"
 	"github.com/docker/docker/api/types/registry"
 )
 
@@ -19,7 +20,7 @@ type apiClient interface {
 	ClientVersion() string
 	ContainerAttach(options types.ContainerAttachOptions) (types.HijackedResponse, error)
 	ContainerCommit(options types.ContainerCommitOptions) (types.ContainerCommitResponse, error)
-	ContainerCreate(config *container.Config, hostConfig *container.HostConfig, containerName string) (types.ContainerCreateResponse, error)
+	ContainerCreate(config *container.Config, hostConfig *container.HostConfig, networkingConfig *networktypes.NetworkingConfig, containerName string) (types.ContainerCreateResponse, error)
 	ContainerDiff(containerID string) ([]types.ContainerChange, error)
 	ContainerExecAttach(execID string, config types.ExecConfig) (types.HijackedResponse, error)
 	ContainerExecCreate(config types.ExecConfig) (types.ContainerExecCreateResponse, error)
@@ -62,7 +63,7 @@ type apiClient interface {
 	ImageSave(imageIDs []string) (io.ReadCloser, error)
 	ImageTag(options types.ImageTagOptions) error
 	Info() (types.Info, error)
-	NetworkConnect(networkID, containerID string) error
+	NetworkConnect(networkID, containerID string, networkingConfig *networktypes.NetworkingConfig) error
 	NetworkCreate(options types.NetworkCreate) (types.NetworkCreateResponse, error)
 	NetworkDisconnect(networkID, containerID string) error
 	NetworkInspect(networkID string) (types.NetworkResource, error)
