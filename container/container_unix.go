@@ -20,6 +20,7 @@ import (
 	"github.com/docker/docker/pkg/chrootarchive"
 	"github.com/docker/docker/pkg/symlink"
 	"github.com/docker/docker/pkg/system"
+	runconfigopts "github.com/docker/docker/runconfig/opts"
 	"github.com/docker/docker/utils"
 	"github.com/docker/docker/volume"
 	"github.com/docker/go-connections/nat"
@@ -266,6 +267,13 @@ func (container *Container) BuildCreateEndpointOptions(n libnetwork.Network) ([]
 		if ipam != nil && (ipam.IPv4Address != "" || ipam.IPv6Address != "") {
 			createOptions = append(createOptions,
 				libnetwork.CreateOptionIpam(net.ParseIP(ipam.IPv4Address), net.ParseIP(ipam.IPv6Address), nil))
+		}
+		for _, str := range epConfig.Aliases {
+			name, alias, err := runconfigopts.ParseLink(str)
+			if err != nil {
+				return nil, err
+			}
+			createOptions = append(createOptions, libnetwork.CreateOptionAlias(name, alias))
 		}
 	}
 

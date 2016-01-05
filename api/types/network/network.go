@@ -39,6 +39,7 @@ type EndpointSettings struct {
 	GlobalIPv6Address   string
 	GlobalIPv6PrefixLen int
 	MacAddress          string
+	Aliases             []string
 }
 
 // CleanOperationalData resets the operational data for this endpoint

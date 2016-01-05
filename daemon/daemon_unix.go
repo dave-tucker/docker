@@ -677,7 +677,7 @@ func setupInitLayer(initLayer string, rootUID, rootGID int) error {
 
 // registerLinks writes the links to a file.
 func (daemon *Daemon) registerLinks(container *container.Container, hostConfig *containertypes.HostConfig) error {
-	if hostConfig == nil || hostConfig.Links == nil {
+	if hostConfig == nil || hostConfig.Links == nil || container.HostConfig.NetworkMode.IsUserDefined() {
 		return nil
 	}
 

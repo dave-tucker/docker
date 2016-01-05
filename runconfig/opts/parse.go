@@ -423,6 +423,21 @@ func Parse(cmd *flag.FlagSet, args []string) (*container.Config, *container.Host
 		}
 	}
 
+	if hostConfig.NetworkMode.IsUserDefined() && len(hostConfig.Links) > 0 {
+		if networkingConfig == nil {
+			networkingConfig = &networktypes.NetworkingConfig{
+				EndpointsConfig: make(map[string]*networktypes.EndpointSettings),
+			}
+		}
+		epConfig := networkingConfig.EndpointsConfig[string(hostConfig.NetworkMode)]
+		if epConfig == nil {
+			epConfig = &networktypes.EndpointSettings{}
+		}
+		epConfig.Aliases = make([]string, len(hostConfig.Links))
+		copy(epConfig.Aliases, hostConfig.Links)
+		networkingConfig.EndpointsConfig[string(hostConfig.NetworkMode)] = epConfig
+	}
+
 	return config, hostConfig, networkingConfig, cmd, nil
 }
 
