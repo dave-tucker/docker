@@ -5,9 +5,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
+	"net"
 	"os"
 	"path"
 	"path/filepath"
+	"strings"
 	"sync"
 
 	log "github.com/Sirupsen/logrus"
@@ -38,6 +40,12 @@ type Sandbox interface {
 	Rename(name string) error
 	// Delete destroys this container after detaching it from all connected endpoints.
 	Delete() error
+	// ResolveName searches for the service name in the networks to which the sandbox
+	// is connected to.
+	ResolveName(name string) net.IP
+	// ResolveIP returns the service name for the passed in IP. IP is in reverse dotted
+	// notation; the format used for DNS PTR records
+	ResolveIP(name string) string
 }
 
 // SandboxOption is a option setter function type used to pass varios options to
@@ -59,8 +67,10 @@ type sandbox struct {
 	id            string
 	containerID   string
 	config        containerConfig
+	extDNS        []string
 	osSbox        osl.Sandbox
 	controller    *controller
+	resolver      Resolver
 	refCnt        int
 	endpoints     epHeap
 	epPriority    map[string]int
@@ -201,6 +211,10 @@ func (sb *sandbox) Delete() error {
 	// Container is going away. Path cache in etchosts is most
 	// likely not required any more. Drop it.
 	etchosts.Drop(sb.config.hostsPath)
+
+	if sb.resolver != nil {
+		sb.resolver.Stop()
+	}
 
 	if sb.osSbox != nil && !sb.config.useDefaultSandBox {
 		sb.osSbox.Destroy()
@@ -361,6 +375,81 @@ func (sb *sandbox) updateGateway(ep *endpoint) error {
 	return nil
 }
 
+func (sb *sandbox) ResolveIP(ip string) string {
+	var svc string
+	log.Debugf("IP To resolve %v", ip)
+
+	for _, ep := range sb.getConnectedEndpoints() {
+		n := ep.getNetwork()
+
+		sr, ok := n.getController().svcDb[n.ID()]
+		if !ok {
+			continue
+		}
+
+		svc, ok = sr.ipMap[ip]
+		if ok {
+			return svc + "." + n.Name()
+		}
+	}
+	return svc
+}
+
+func (sb *sandbox) ResolveName(name string) net.IP {
+	var ip net.IP
+	parts := strings.Split(name, ".")
+	log.Debugf("To resolve %v", parts)
+
+	reqName := parts[0]
+	networkName := ""
+	if len(parts) > 1 {
+		networkName = parts[1]
+	}
+
+	// First check for local container alias
+	ip = sb.resolveName(reqName, networkName, true)
+	if ip != nil {
+		return ip
+	}
+
+	// Resolve the actual container name
+	return sb.resolveName(reqName, networkName, false)
+}
+
+func (sb *sandbox) resolveName(req string, networkName string, alias bool) net.IP {
+	for _, ep := range sb.getConnectedEndpoints() {
+		name := req
+		n := ep.getNetwork()
+
+		if networkName != "" && networkName != n.Name() {
+			continue
+		}
+
+		if alias {
+			if ep.aliases == nil {
+				continue
+			}
+
+			var ok bool
+			name, ok = ep.aliases[req]
+			if !ok {
+				continue
+			}
+		}
+
+		sr, ok := n.getController().svcDb[n.ID()]
+		if !ok {
+			continue
+		}
+
+		ip, ok := sr.svcMap[name]
+		if ok {
+			return ip
+		}
+	}
+	return nil
+}
+
 func (sb *sandbox) SetKey(basePath string) error {
 	var err error
 	if basePath == "" {
@@ -393,6 +482,9 @@ func (sb *sandbox) SetKey(basePath string) error {
 			sb.Unlock()
 		}
 	}()
+
+	sb.osSbox.InvokeFunc(sb.resolver.SetupFunc())
+	sb.resolver.Start()
 
 	for _, ep := range sb.getConnectedEndpoints() {
 		if err = sb.populateNetworkResources(ep); err != nil {
@@ -599,7 +691,7 @@ func (sb *sandbox) buildHostsFile() error {
 	return etchosts.Build(sb.config.hostsPath, "", sb.config.hostName, sb.config.domainName, extraContent)
 }
 
-func (sb *sandbox) updateHostsFile(ifaceIP string, svcRecords []etchosts.Record) error {
+func (sb *sandbox) updateHostsFile(ifaceIP string) error {
 	var mhost string
 
 	if sb.config.originHostsPath != "" {
@@ -613,11 +705,7 @@ func (sb *sandbox) updateHostsFile(ifaceIP string, svcRecords []etchosts.Record)
 		mhost = sb.config.hostName
 	}
 
-	extraContent := make([]etchosts.Record, 0, len(svcRecords)+1)
-	extraContent = append(extraContent, etchosts.Record{Hosts: mhost, IP: ifaceIP})
-	for _, svc := range svcRecords {
-		extraContent = append(extraContent, svc)
-	}
+	extraContent := []etchosts.Record{{Hosts: mhost, IP: ifaceIP}}
 
 	sb.addHostsEntries(extraContent)
 	return nil
@@ -678,35 +766,31 @@ func (sb *sandbox) setupDNS() error {
 		return err
 	}
 
-	if len(sb.config.dnsList) > 0 || len(sb.config.dnsSearchList) > 0 || len(sb.config.dnsOptionsList) > 0 {
-		var (
-			err            error
-			dnsList        = resolvconf.GetNameservers(currRC.Content)
-			dnsSearchList  = resolvconf.GetSearchDomains(currRC.Content)
-			dnsOptionsList = resolvconf.GetOptions(currRC.Content)
-		)
-		if len(sb.config.dnsList) > 0 {
-			dnsList = sb.config.dnsList
-		}
-		if len(sb.config.dnsSearchList) > 0 {
-			dnsSearchList = sb.config.dnsSearchList
-		}
-		if len(sb.config.dnsOptionsList) > 0 {
-			dnsOptionsList = sb.config.dnsOptionsList
-		}
-		newRC, err = resolvconf.Build(sb.config.resolvConfPath, dnsList, dnsSearchList, dnsOptionsList)
-		if err != nil {
-			return err
-		}
-	} else {
-		// Replace any localhost/127.* (at this point we have no info about ipv6, pass it as true)
-		if newRC, err = resolvconf.FilterResolvDNS(currRC.Content, true); err != nil {
-			return err
-		}
-		// No contention on container resolv.conf file at sandbox creation
-		if err := ioutil.WriteFile(sb.config.resolvConfPath, newRC.Content, filePerm); err != nil {
-			return types.InternalErrorf("failed to write unhaltered resolv.conf file content when setting up dns for sandbox %s: %v", sb.ID(), err)
-		}
+	// Only the embedded DNS's server's IP is populated in the container's resolv.conf
+	// Other external servers from the host's resolv.conf or from --dns config are kept
+	// in the sandbox and used when the embedded server can't resolve a name.
+	var (
+		dnsList        = resolvconf.GetNameservers(currRC.Content)
+		dnsSearchList  = resolvconf.GetSearchDomains(currRC.Content)
+		dnsOptionsList = resolvconf.GetOptions(currRC.Content)
+	)
+
+	if len(sb.config.dnsList) > 0 {
+		dnsList = sb.config.dnsList
+	}
+	sb.extDNS = resolvconf.FilterDNSList(dnsList, false)
+
+	if len(sb.config.dnsSearchList) > 0 {
+		dnsSearchList = sb.config.dnsSearchList
+	}
+	if len(sb.config.dnsOptionsList) > 0 {
+		dnsOptionsList = sb.config.dnsOptionsList
+	}
+	ns := []string{sb.resolver.NameServer()}
+
+	newRC, err = resolvconf.Build(sb.config.resolvConfPath, ns, dnsSearchList, dnsOptionsList)
+	if err != nil {
+		return err
 	}
 
 	// Write hash

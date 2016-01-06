@@ -63,6 +63,7 @@ type endpoint struct {
 	prefAddress   net.IP
 	prefAddressV6 net.IP
 	ipamOptions   map[string]string
+	aliases       map[string]string
 	dbIndex       uint64
 	dbExists      bool
 	sync.Mutex
@@ -339,6 +340,7 @@ func (ep *endpoint) sbJoin(sbox Sandbox, options ...EndpointOption) error {
 		return fmt.Errorf("failed to get network from store during join: %v", err)
 	}
 
+	aliases := ep.aliases
 	ep, err = network.getEndpointFromStore(ep.ID())
 	if err != nil {
 		return fmt.Errorf("failed to get endpoint from store during join: %v", err)
@@ -355,6 +357,7 @@ func (ep *endpoint) sbJoin(sbox Sandbox, options ...EndpointOption) error {
 	ep.network = network
 	ep.sandboxID = sbox.ID()
 	ep.joinInfo = &endpointJoinInfo{}
+	ep.aliases = aliases
 	epid := ep.id
 	ep.Unlock()
 	defer func() {
@@ -391,18 +394,6 @@ func (ep *endpoint) sbJoin(sbox Sandbox, options ...EndpointOption) error {
 
 	// Watch for service records
 	network.getController().watchSvcRecord(ep)
-
-	address := ""
-	if ip := ep.getFirstInterfaceAddress(); ip != nil {
-		address = ip.String()
-	}
-	if err = sb.updateHostsFile(address, network.getSvcRecords(ep)); err != nil {
-		return err
-	}
-
-	if err = sb.updateDNS(network.enableIPv6); err != nil {
-		return err
-	}
 
 	if err = network.getController().updateToStore(ep); err != nil {
 		return err
@@ -726,6 +717,16 @@ func CreateOptionPortMapping(portBindings []types.PortBinding) EndpointOption {
 func CreateOptionAnonymous() EndpointOption {
 	return func(ep *endpoint) {
 		ep.anonymous = true
+	}
+}
+
+//CreateOptionAlias function returns an option setter for setting endpoint alias
+func CreateOptionAlias(name string, alias string) EndpointOption {
+	return func(ep *endpoint) {
+		if ep.aliases == nil {
+			ep.aliases = make(map[string]string)
+		}
+		ep.aliases[alias] = name
 	}
 }
 
