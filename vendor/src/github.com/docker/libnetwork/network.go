@@ -62,6 +62,7 @@ type NetworkInfo interface {
 	IpamInfo() ([]*IpamInfo, []*IpamInfo)
 	DriverOptions() map[string]string
 	Scope() string
+	Internal() bool
 }
 
 // EndpointWalker is a client provided function which will be used to walk the Endpoints.
@@ -825,19 +826,6 @@ func (n *network) EndpointByID(id string) (Endpoint, error) {
 	return ep, nil
 }
 
-// Given a net.IP {10 0 0 1} returns a string of the form
-// 1.0.0.10. This is used to setup the IP to service name
-// mapping in the optimal way for the DNS PTR queries.
-func ipToStr(ip net.IP) string {
-	if newip := ip.To4(); newip != nil {
-		return (strconv.Itoa(int(newip[3])) + "." +
-			strconv.Itoa(int(newip[2])) + "." +
-			strconv.Itoa(int(newip[1])) + "." +
-			strconv.Itoa(int(newip[0])))
-	}
-	return ""
-}
-
 func (n *network) updateSvcRecord(ep *endpoint, localEps []*endpoint, isAdd bool) {
 	if ep.isAnonymous() {
 		return
@@ -853,26 +841,23 @@ func (n *network) updateSvcRecord(ep *endpoint, localEps []*endpoint, isAdd bool
 		sr = c.svcDb[n.ID()]
 	}
 
+	epName := ep.Name()
 	n.Lock()
 	if iface := ep.Iface(); iface.Address() != nil {
 
-		ipStr := ipToStr(iface.Address().IP)
+		reverseIP := netutils.ReverseIP(iface.Address().IP.String())
 		if isAdd {
 			// If we already have this endpoint in service db just return
-			if _, ok := sr.svcMap[ep.name]; ok {
+			if _, ok := sr.svcMap[epName]; ok {
 				n.Unlock()
 				return
 			}
 
-			sr.svcMap[ep.name] = iface.Address().IP
-			sr.svcMap[ep.name+"."+n.name] = iface.Address().IP
-
-			sr.ipMap[ipStr] = ep.name
+			sr.svcMap[epName] = iface.Address().IP
+			sr.ipMap[reverseIP] = epName
 		} else {
-			delete(sr.svcMap, ep.name)
-			delete(sr.svcMap, ep.name+"."+n.name)
-
-			delete(sr.ipMap, ipStr)
+			delete(sr.svcMap, epName)
+			delete(sr.ipMap, reverseIP)
 		}
 	}
 	n.Unlock()

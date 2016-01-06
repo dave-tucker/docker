@@ -16,6 +16,7 @@ clone git github.com/kr/pty 5cf931ef8f
 clone git github.com/mattn/go-shellwords v1.0.0
 clone git github.com/mattn/go-sqlite3 v1.1.0
 clone git github.com/microsoft/hcsshim de43b42b5ce14dfdcbeedb0628b0032174d89caa
+clone git github.com/miekg/dns 1756430e42a7b2ecded216a9fdd37d002c116df5
 clone git github.com/mistifyio/go-zfs v2.1.1
 clone git github.com/tchap/go-patricia v2.1.0
 clone git github.com/vdemeester/shakers 3c10293ce22b900c27acad7b28656196fcc2f73b
@@ -24,14 +25,14 @@ clone git github.com/docker/go-units 651fc226e7441360384da338d0fd37f2440ffbe3
 clone git github.com/docker/go-connections 4e42727957c146776e5de9cec8c39e4059ed9f20
 
 #get libnetwork packages
-clone git github.com/docker/libnetwork 133e6148ae68fa4801b59e231ba91abd09a1b669 https://github.com/mavenugo/libnetwork
+clone git github.com/docker/libnetwork 02b8962f4fb95af14832548b61a57fa6a14a4d9c
 clone git github.com/armon/go-metrics eb0af217e5e9747e41dd5303755356b62d28e3ec
 clone git github.com/hashicorp/go-msgpack 71c2886f5a673a35f909803f38ece5810165097b
 clone git github.com/hashicorp/memberlist 9a1e242e454d2443df330bdd51a436d5a9058fc4
 clone git github.com/hashicorp/serf 7151adcef72687bf95f451a2e0ba15cb19412bf2
 clone git github.com/docker/libkv c2aac5dbbaa5c872211edea7c0f32b3bd67e7410
 clone git github.com/vishvananda/netns 604eaf189ee867d8c147fafc28def2394e878d25
-clone git github.com/vishvananda/netlink 8e810149a2e531fed9b837c0c7d8a8922d2bedf7
+clone git github.com/vishvananda/netlink bfd70f556483c008636b920dda142fdaa0d59ef9
 clone git github.com/BurntSushi/toml f706d00e3de6abe700c994cdd545a1a4915af060
 clone git github.com/samuel/go-zookeeper d0e0d8e11f318e000a8cc434616d69e329edc374
 clone git github.com/deckarep/golang-set ef32fa3046d9f249d399f98ebaf9be944430fd1d
@@ -75,4 +76,3 @@ clone git gopkg.in/fsnotify.v1 v1.2.0
 clone git github.com/aws/aws-sdk-go v0.9.9
 clone git github.com/vaughan0/go-ini a98ad7ee00ec53921f08832bc06ecf7fd600e6a1
 
-clean

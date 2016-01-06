@@ -522,15 +522,11 @@ func (c *controller) NewSandbox(containerID string, options ...SandboxOption) (S
 
 	heap.Init(&sb.endpoints)
 
-	sb.resolver = NewResolver(sb)
-
 	sb.processOptions(options...)
 
 	if err = sb.setupResolutionFiles(); err != nil {
 		return nil, err
 	}
-
-	sb.resolver.SetExtServers(sb.extDNS)
 
 	if sb.config.useDefaultSandBox {
 		c.sboxOnce.Do(func() {
@@ -549,9 +545,6 @@ func (c *controller) NewSandbox(containerID string, options ...SandboxOption) (S
 		if sb.osSbox, err = osl.NewSandbox(sb.Key(), !sb.config.useDefaultSandBox); err != nil {
 			return nil, fmt.Errorf("failed to create new osl sandbox: %v", err)
 		}
-		sb.osSbox.InvokeFunc(sb.resolver.SetupFunc())
-		sb.resolver.Start()
-
 	}
 
 	c.Lock()

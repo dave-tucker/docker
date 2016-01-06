@@ -3,7 +3,6 @@ package libnetwork
 import (
 	"fmt"
 	"net"
-	"strconv"
 	"strings"
 
 	log "github.com/Sirupsen/logrus"
@@ -26,13 +25,16 @@ type Resolver interface {
 	NameServer() string
 	// To configure external name servers the resolver should use
 	SetExtServers([]string)
+	// ResolverOptions returns resolv.conf options that should be set
+	ResolverOptions() []string
 }
 
-var (
-	resolverIP    = "127.0.0.1"
+const (
+	resolverIP    = "127.0.0.11"
 	dnsPort       = "53"
 	ptrIPv4domain = ".in-addr.arpa."
 	ptrIPv6domain = ".ip6.arpa."
+	respTTL       = 1800
 )
 
 // resolver implements the Resolver interface
@@ -52,15 +54,6 @@ func NewResolver(sb *sandbox) Resolver {
 	}
 }
 
-func setupNAT(name string, rule ...string) error {
-	if output, err := iptables.Raw(rule...); err != nil {
-		return fmt.Errorf("setting up %s failed: %v", name, err)
-	} else if len(output) != 0 {
-		return fmt.Errorf("setting up %s failed: %v", name, err)
-	}
-	return nil
-}
-
 func (r *resolver) SetupFunc() func() {
 	return (func() {
 		var err error
@@ -72,21 +65,19 @@ func (r *resolver) SetupFunc() func() {
 		r.conn, err = net.ListenUDP("udp", addr)
 		if err != nil {
 			r.err = fmt.Errorf("error in opening name server socket %v", err)
-			log.Error(r.err)
 			return
 		}
 		laddr := r.conn.LocalAddr()
-		ipPort := strings.Split(laddr.String(), ":")
+		_, ipPort, _ := net.SplitHostPort(laddr.String())
 
 		rules := [][]string{
-			{"-t", "nat", "-A", "OUTPUT", "-s", resolverIP, "-p", "udp", "--dport", dnsPort, "-j", "DNAT", "--to-destination", laddr.String()},
-			{"-t", "nat", "-A", "POSTROUTING", "-s", resolverIP, "-p", "udp", "--sport", ipPort[1], "-j", "SNAT", "--to-source", ":" + dnsPort},
+			{"-t", "nat", "-A", "OUTPUT", "-d", resolverIP, "-p", "udp", "--dport", dnsPort, "-j", "DNAT", "--to-destination", laddr.String()},
+			{"-t", "nat", "-A", "POSTROUTING", "-s", resolverIP, "-p", "udp", "--sport", ipPort, "-j", "SNAT", "--to-source", ":" + dnsPort},
 		}
 
-		for i, rule := range rules {
-			r.err = setupNAT("rule "+strconv.Itoa(i), rule...)
+		for _, rule := range rules {
+			r.err = iptables.RawCombinedOutput(rule...)
 			if r.err != nil {
-				log.Error(r.err)
 				return
 			}
 		}
@@ -121,6 +112,10 @@ func (r *resolver) NameServer() string {
 	return resolverIP
 }
 
+func (r *resolver) ResolverOptions() []string {
+	return []string{"ndots:0"}
+}
+
 func (r *resolver) handleIPv4Query(name string, query *dns.Msg) (*dns.Msg, error) {
 	addr := r.sb.ResolveName(name)
 	if addr == nil {
@@ -133,7 +128,7 @@ func (r *resolver) handleIPv4Query(name string, query *dns.Msg) (*dns.Msg, error
 	resp.SetReply(query)
 
 	rr := new(dns.A)
-	rr.Hdr = dns.RR_Header{Name: name, Rrtype: dns.TypeA, Class: dns.ClassINET, Ttl: 1800}
+	rr.Hdr = dns.RR_Header{Name: name, Rrtype: dns.TypeA, Class: dns.ClassINET, Ttl: respTTL}
 	rr.A = addr
 	resp.Answer = append(resp.Answer, rr)
 	return resp, nil
@@ -162,7 +157,7 @@ func (r *resolver) handlePTRQuery(ptr string, query *dns.Msg) (*dns.Msg, error) 
 	resp.SetReply(query)
 
 	rr := new(dns.PTR)
-	rr.Hdr = dns.RR_Header{Name: ptr, Rrtype: dns.TypePTR, Class: dns.ClassINET, Ttl: 1800}
+	rr.Hdr = dns.RR_Header{Name: ptr, Rrtype: dns.TypePTR, Class: dns.ClassINET, Ttl: respTTL}
 	rr.Ptr = fqdn
 	resp.Answer = append(resp.Answer, rr)
 	return resp, nil
@@ -187,6 +182,9 @@ func (r *resolver) ServeDNS(w dns.ResponseWriter, query *dns.Msg) {
 	}
 
 	if resp == nil {
+		if len(r.extDNS) == 0 {
+			return
+		}
 		log.Debugf("Querying ext dns %s for %s[%d]", r.extDNS[0], name, query.Question[0].Qtype)
 
 		c := &dns.Client{Net: "udp"}
